@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs"
 import { shadcn } from "@clerk/ui/themes"
 import { Geist, Geist_Mono } from "next/font/google"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -36,7 +37,7 @@ export default function RootLayout({
           taskUrls={{ "choose-organization": "/choose-organizations" }}
         >
           <ThemeProvider>
-            {children}
+            <TooltipProvider>{children}</TooltipProvider>
             <Toaster />
           </ThemeProvider>
         </ClerkProvider>
