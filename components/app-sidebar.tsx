@@ -1,4 +1,5 @@
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs"
+import { auth } from "@clerk/nextjs/server"
 
 import {
   Sidebar,
@@ -13,9 +14,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { createWorkflowAction } from "@/features/workflows/actions"
 import { WorkflowNav } from "@/features/workflows/components/workflow-nav"
+import { listWorkflows } from "@/features/workflows/data"
 
-export function AppSidebar() {
+export async function AppSidebar() {
+  const { orgId } = await auth()
+  const workflows = orgId ? await listWorkflows(orgId) : []
+
   return (
     <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader className="h-[83px] flex-row items-center gap-2 px-[23px] py-[18px] group-data-[collapsible=icon]:h-16 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
@@ -55,7 +61,10 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="group-data-[collapsible=icon]:overflow-x-hidden! group-data-[collapsible=icon]:overflow-y-auto! group-data-[collapsible=icon]:overscroll-contain">
-        <WorkflowNav />
+        <WorkflowNav
+          workflows={workflows}
+          createWorkflowAction={createWorkflowAction}
+        />
       </SidebarContent>
 
       <SidebarFooter className="items-start px-[23px] py-[23px] group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0">
