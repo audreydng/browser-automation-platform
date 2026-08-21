@@ -19,6 +19,8 @@
 /build
 
 # misc
+.agents
+.claude
 .DS_Store
 *.pem
 
