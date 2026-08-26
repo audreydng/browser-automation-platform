@@ -29,7 +29,7 @@ export async function runWorkflowAction() {
     throw new Error("No active organization")
   }
 
-  await tasks.trigger<typeof helloWorldTask>("hello-world", {
+  return tasks.trigger<typeof helloWorldTask>("hello-world", {
     message: "Hello from right-sidebar!",
   })
 }
