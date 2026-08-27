@@ -1,16 +1,13 @@
 "use client"
 
-import { useCallback, useSyncExternalStore } from "react"
+import { useSyncExternalStore } from "react"
+import { Cursors, useLiveblocksFlow } from "@liveblocks/react-flow"
 import { useTheme } from "next-themes"
 import {
-  addEdge,
   Controls,
   ReactFlow,
-  useEdgesState,
-  useNodesState,
   ConnectionLineType,
   type ColorMode,
-  type Connection,
   type Edge,
   NodeTypes,
 } from "@xyflow/react"
@@ -22,6 +19,8 @@ import {
 } from "@/features/workflows/nodes/node-registry"
 
 import "@xyflow/react/dist/style.css"
+import "@liveblocks/react-ui/styles.css"
+import "@liveblocks/react-flow/styles.css"
 
 const openUrlType = "open-url" as const
 const openUrlDefinition = nodeRegistry[openUrlType]
@@ -68,13 +67,12 @@ export function Canvas() {
   const colorMode: ColorMode = mounted
     ? ((resolvedTheme as ColorMode) ?? "light")
     : "light"
-  const [nodes, , onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-
-  const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
-  )
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onDelete } =
+    useLiveblocksFlow<StepNodeType, Edge>({
+      suspense: true,
+      nodes: { initial: initialNodes },
+      edges: { initial: initialEdges },
+    })
 
   return (
     <div className="size-full">
@@ -85,6 +83,7 @@ export function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onDelete={onDelete}
         colorMode={colorMode}
         fitView
         connectionLineType={ConnectionLineType.SmoothStep}
@@ -102,6 +101,7 @@ export function Canvas() {
         }
         maxZoom={1}
       >
+        <Cursors />
         <Controls />
       </ReactFlow>
     </div>
