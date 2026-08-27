@@ -12,23 +12,34 @@ import {
   type ColorMode,
   type Connection,
   type Edge,
-  type Node,
+  NodeTypes,
 } from "@xyflow/react"
+
+import { StepNode } from "@/features/workflows/components/step-node"
+import type { StepNodeType } from "@/features/workflows/nodes/node-registry"
 
 import "@xyflow/react/dist/style.css"
 
-const initialNodes: Node[] = [
-  { id: "1", data: { label: "Node 1" }, position: { x: 0, y: 0 } },
-  { id: "2", data: { label: "Node 2" }, position: { x: 250, y: 0 } },
+const nodeTypes: NodeTypes = { step: StepNode }
+
+const initialNodes: StepNodeType[] = [
+  {
+    id: "start",
+    type: "step",
+    position: { x: 0, y: 0 },
+    data: { type: "start", kind: "trigger", title: "Start", values: {} },
+  },
 ]
 
-const initialEdges: Edge[] = [{ id: "e1-2", source: "1", target: "2" }]
+const initialEdges: Edge[] = []
 
-const subscribe = () => () => {}
+const emptySubscribe = () => () => { }
 
+// False during server render and hydration, true after mount. Keeps the
+// server and initial client render identical to avoid a hydration mismatch.
 function useMounted() {
   return useSyncExternalStore(
-    subscribe,
+    emptySubscribe,
     () => true,
     () => false
   )
@@ -37,8 +48,9 @@ function useMounted() {
 export function Canvas() {
   const { resolvedTheme } = useTheme()
   const mounted = useMounted()
-  const colorMode: ColorMode =
-    mounted && resolvedTheme === "dark" ? "dark" : "light"
+  const colorMode: ColorMode = mounted
+    ? (resolvedTheme as ColorMode) ?? "light"
+    : "light"
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
@@ -50,6 +62,7 @@ export function Canvas() {
   return (
     <div className="size-full">
       <ReactFlow
+        nodeTypes={nodeTypes}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
