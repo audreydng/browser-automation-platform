@@ -8,7 +8,7 @@ export default function DashboardLayout({
 }>) {
   return (
     <SidebarProvider
-      className="dark h-svh bg-[#1b1b1b]"
+      className="h-svh bg-background"
       style={
         {
           "--sidebar-width": "377px",
@@ -17,7 +17,7 @@ export default function DashboardLayout({
       }
     >
       <AppSidebar />
-      <SidebarInset className="min-h-0 overflow-hidden border bg-[#1b1b1b] shadow-none!">
+      <SidebarInset className="min-h-0 overflow-hidden border bg-background shadow-none!">
         {children}
       </SidebarInset>
     </SidebarProvider>

@@ -1,41 +1,49 @@
 "use client"
 
+import { useCallback, useSyncExternalStore } from "react"
+import { useTheme } from "next-themes"
 import {
   addEdge,
-  Background,
   Controls,
   ReactFlow,
   useEdgesState,
   useNodesState,
+  ConnectionLineType,
+  type ColorMode,
   type Connection,
   type Edge,
   type Node,
 } from "@xyflow/react"
-import { useCallback } from "react"
+
+import "@xyflow/react/dist/style.css"
 
 const initialNodes: Node[] = [
-  {
-    id: "1",
-    position: { x: 0, y: 0 },
-    data: { label: "Start" },
-    type: "input",
-  },
-  {
-    id: "2",
-    position: { x: 250, y: 100 },
-    data: { label: "Workflow step" },
-  },
+  { id: "1", data: { label: "Node 1" }, position: { x: 0, y: 0 } },
+  { id: "2", data: { label: "Node 2" }, position: { x: 250, y: 0 } },
 ]
 
-const initialEdges: Edge[] = [{ id: "1-2", source: "1", target: "2" }]
+const initialEdges: Edge[] = [{ id: "e1-2", source: "1", target: "2" }]
+
+const subscribe = () => () => {}
+
+function useMounted() {
+  return useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false
+  )
+}
 
 export function Canvas() {
+  const { resolvedTheme } = useTheme()
+  const mounted = useMounted()
+  const colorMode: ColorMode =
+    mounted && resolvedTheme === "dark" ? "dark" : "light"
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
   const onConnect = useCallback(
-    (connection: Connection) =>
-      setEdges((currentEdges) => addEdge(connection, currentEdges)),
+    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   )
 
@@ -47,9 +55,23 @@ export function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        colorMode={colorMode}
         fitView
+        connectionLineType={ConnectionLineType.SmoothStep}
+        connectionLineStyle={{ stroke: "var(--border)" }}
+        defaultEdgeOptions={{
+          type: "smoothstep",
+          style: { stroke: "var(--border)" },
+        }}
+        style={
+          {
+            "--xy-background-color": "var(--background)",
+            "--xy-edge-stroke-width": 2,
+            "--xy-connectionline-stroke-width": 2,
+          } as React.CSSProperties
+        }
+        maxZoom={1}
       >
-        <Background />
         <Controls />
       </ReactFlow>
     </div>
