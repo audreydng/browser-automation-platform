@@ -16,9 +16,15 @@ import {
 } from "@xyflow/react"
 
 import { StepNode } from "@/features/workflows/components/step-node"
-import type { StepNodeType } from "@/features/workflows/nodes/node-registry"
+import {
+  nodeRegistry,
+  type StepNodeType,
+} from "@/features/workflows/nodes/node-registry"
 
 import "@xyflow/react/dist/style.css"
+
+const openUrlType = "open-url" as const
+const openUrlDefinition = nodeRegistry[openUrlType]
 
 const nodeTypes: NodeTypes = { step: StepNode }
 
@@ -29,11 +35,22 @@ const initialNodes: StepNodeType[] = [
     position: { x: 0, y: 0 },
     data: { type: "start", kind: "trigger", title: "Start", values: {} },
   },
+  {
+    id: "open-url",
+    type: "step",
+    position: { x: 300, y: 0 },
+    data: {
+      type: openUrlType,
+      kind: openUrlDefinition.kind,
+      title: openUrlDefinition.label,
+      values: { url: "" },
+    },
+  },
 ]
 
 const initialEdges: Edge[] = []
 
-const emptySubscribe = () => () => { }
+const emptySubscribe = () => () => {}
 
 // False during server render and hydration, true after mount. Keeps the
 // server and initial client render identical to avoid a hydration mismatch.
@@ -49,7 +66,7 @@ export function Canvas() {
   const { resolvedTheme } = useTheme()
   const mounted = useMounted()
   const colorMode: ColorMode = mounted
-    ? (resolvedTheme as ColorMode) ?? "light"
+    ? ((resolvedTheme as ColorMode) ?? "light")
     : "light"
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
