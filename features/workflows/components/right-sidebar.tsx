@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { MoreHorizontal, Play, Trash2 } from "lucide-react"
+import { useReactFlow, useStore } from "@xyflow/react"
+import { toast } from "sonner"
 
 import {
   Accordion,
@@ -158,9 +160,63 @@ const definitions = Object.values(nodeRegistry)
 
 // The Toolbar tab: a button per node type that adds it to the canvas.
 function Palette() {
+  const { getNodes, screenToFlowPosition, setNodes } =
+    useReactFlow<StepNodeType>()
+  const flowElement = useStore((state) => state.domNode)
+
   const add = (type: NodeType) => {
-    // TODO: add the clicked node to the canvas (one trigger max).
-    void type
+    const def = nodeRegistry[type]
+    const nodes = getNodes()
+
+    if (def.kind === "trigger" && nodes.some((node) => node.data.kind === "trigger")) {
+      toast.error("A workflow can only have one trigger node.")
+      return
+    }
+
+    if (!flowElement) {
+      return
+    }
+
+    const bounds = flowElement.getBoundingClientRect()
+    const position = screenToFlowPosition({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    })
+    const nodesOfType = nodes.filter((node) => node.data.type === type)
+    const numberedTitles = new Map(
+      nodesOfType.map((node, index) => [node.id, `${def.label} ${index + 1}`])
+    )
+    const title =
+      nodesOfType.length === 0
+        ? def.label
+        : `${def.label} ${nodesOfType.length + 1}`
+    const values = Object.fromEntries(
+      def.fields.map((field) => [field.key, ""])
+    )
+
+    const node: StepNodeType = {
+      id: crypto.randomUUID(),
+      type: "step",
+      position,
+      origin: [0.5, 0.5],
+      data: {
+        type,
+        kind: def.kind,
+        title,
+        values,
+      },
+    }
+
+    setNodes((currentNodes) => [
+      ...currentNodes.map((currentNode) => {
+        const title = numberedTitles.get(currentNode.id)
+
+        return title
+          ? { ...currentNode, data: { ...currentNode.data, title } }
+          : currentNode
+      }),
+      node,
+    ])
   }
 
   return (
