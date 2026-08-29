@@ -28,6 +28,9 @@ export async function AppSidebar() {
         <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
           <OrganizationSwitcher
             hidePersonal
+            afterCreateOrganizationUrl="/"
+            afterSelectOrganizationUrl="/"
+            afterLeaveOrganizationUrl="/"
             appearance={{
               elements: {
                 rootBox: "w-full",
