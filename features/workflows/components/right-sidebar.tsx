@@ -1,7 +1,8 @@
 "use client"
 
-import { use, useState } from "react"
+import { useState, useTransition } from "react"
 import { MoreHorizontal, Play, Trash2 } from "lucide-react"
+import { unstable_rethrow } from "next/navigation"
 import { useReactFlow, useStore } from "@xyflow/react"
 import { toast } from "sonner"
 
@@ -22,8 +23,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ResizablePanel } from "@/components/ui/resizable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
+import { deleteWorkflowAction } from "@/features/workflows/actions"
 import {
   nodeRegistry,
   type NodeDefinition,
@@ -32,7 +35,6 @@ import {
   type StepNodeKind,
   type StepNodeType,
 } from "@/features/workflows/nodes/node-registry"
-import { stat } from "fs"
 
 // This file builds up to the RightSidebar component exported at the bottom: a
 // header with workflow actions (delete, run), then two tabs — a Toolbar for
@@ -86,7 +88,7 @@ function Section({
 // ---------------------------------------------------------------------------
 
 // A single editor field for a node property.
-function FieldInput({
+function Field({
   field,
   value,
   onChange,
@@ -95,19 +97,29 @@ function FieldInput({
   value: string
   onChange: (value: string) => void
 }) {
-  // TODO: support a multiline field variant (textarea).
+  const Control = field.multiline ? Textarea : Input
+
   return (
-    <Input
-      id={field.key}
-      value={value}
-      placeholder={field.placeholder}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={field.key} className="text-xs">
+        {field.label}
+        {field.required && <span className="text-destructive"> *</span>}
+      </Label>
+      <Control
+        id={field.key}
+        value={value}
+        placeholder={field.placeholder}
+        required={field.required}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
   )
 }
 
 // The Editor tab: one input per field on the selected node, or an empty state.
 function Inspector({ node }: { node: StepNodeType | undefined }) {
+  const { updateNodeData } = useReactFlow<StepNodeType>()
+
   if (!node) {
     return (
       <Section title="Editor">
@@ -126,19 +138,16 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
           <p className="text-xs text-muted-foreground">No properties</p>
         ) : (
           def.fields.map((field) => (
-            <div key={field.key} className="flex flex-col gap-1.5">
-              <Label htmlFor={field.key} className="text-xs">
-                {field.label}
-              </Label>
-              <FieldInput
-                field={field}
-                value={values[field.key] ?? ""}
-                onChange={(value) => {
-                  // TODO: save the edit back onto the selected node.
-                  void value
-                }}
-              />
-            </div>
+            <Field
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? ""}
+              onChange={(value) => {
+                updateNodeData(node.id, {
+                  values: { ...values, [field.key]: value },
+                })
+              }}
+            />
           ))
         )}
       </div>
@@ -263,7 +272,20 @@ function Palette() {
 // ---------------------------------------------------------------------------
 
 // The "..." menu for workflow-level actions.
-function ActionsMenu() {
+function ActionsMenu({ workflowId }: { workflowId: string }) {
+  const [isPending, startTransition] = useTransition()
+
+  function handleDelete() {
+    startTransition(async () => {
+      try {
+        await deleteWorkflowAction(workflowId)
+      } catch (error) {
+        unstable_rethrow(error)
+        toast.error("Could not delete workflow.")
+      }
+    })
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -274,9 +296,11 @@ function ActionsMenu() {
       <DropdownMenuContent align="start" className="min-w-48">
         <DropdownMenuItem
           variant="destructive"
+          disabled={isPending}
           className="text-xs [&_svg:not([class*='size-'])]:size-3.5"
-          onSelect={() => {
-            // TODO: delete the workflow, then navigate away.
+          onSelect={(event) => {
+            event.preventDefault()
+            handleDelete()
           }}
         >
           <Trash2 />
@@ -307,13 +331,17 @@ function RunButton() {
 // The sidebar itself — header on top, then the Toolbar / Editor tabs.
 // ---------------------------------------------------------------------------
 
-export function RightSidebar() {
+export function RightSidebar({ workflowId }: { workflowId: string }) {
   const [tab, setTab] = useState("toolbar")
 
   // TODO: read the currently selected node from React Flow.
   const selected = useStore((state) => state.nodes.find((node) => node.selected)) as StepNodeType | undefined
   // TODO: auto-switch to the Editor tab when the selection changes.
-
+  const [prevSelectedId, setPrevSelectedId] = useState(selected?.id)
+  if (selected && selected.id !== prevSelectedId) {
+    setTab("editor")
+    setPrevSelectedId(selected.id)
+  }
   return (
     <ResizablePanel
       className="bg-background"
@@ -324,7 +352,7 @@ export function RightSidebar() {
     >
       <Tabs value={tab} onValueChange={setTab} className="size-full gap-0">
         <div className="flex items-center justify-between border-b border-border p-2">
-          <ActionsMenu />
+          <ActionsMenu workflowId={workflowId} />
           <RunButton />
         </div>
         <TabsList className="m-2 w-fit bg-background">
