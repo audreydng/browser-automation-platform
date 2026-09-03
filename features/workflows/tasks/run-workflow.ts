@@ -55,8 +55,10 @@ export const runWorkflowTask = task({
       // TODO: actually execute the node instead of just logging it, and report
       // its progress so the UI can watch the run live.
       const executor = nodeExecutors[node.data.type]
-
+      if (executor) await executor({ values: node.data.values, getStagehand })
     }
+
+    await stagehand?.close()
 
     return { steps: order.length }
   },
