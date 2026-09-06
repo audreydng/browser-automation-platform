@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
 import { deleteWorkflowAction, runWorkflowAction } from "@/features/workflows/actions"
+import { useUpstreamConnections } from "@/features/workflows/hooks/use-upstream-connections"
 import { validateGraph } from "@/features/workflows/lib/validate-graph"
 
 import {
@@ -94,10 +95,12 @@ function Field({
   field,
   value,
   onChange,
+  onFocus,
 }: {
   field: NodeField
   value: string
   onChange: (value: string) => void
+  onFocus: () => void
 }) {
   const Control = field.multiline ? Textarea : Input
 
@@ -113,6 +116,7 @@ function Field({
         placeholder={field.placeholder}
         required={field.required}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
       />
     </div>
   )
@@ -121,6 +125,11 @@ function Field({
 // The Editor tab: one input per field on the selected node, or an empty state.
 function Inspector({ node }: { node: StepNodeType | undefined }) {
   const { updateNodeData } = useReactFlow<StepNodeType>()
+  const connections = useUpstreamConnections(node)
+  const [lastEditedField, setLastEditedField] = useState<{
+    nodeId: string
+    fieldKey: string
+  }>()
 
   if (!node) {
     return (
@@ -133,6 +142,23 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
   const { type, title, values } = node.data
   const def: NodeDefinition = nodeRegistry[type]
 
+  const insertConnection = (connectionValue: string) => {
+    const fieldKey =
+      lastEditedField?.nodeId === node.id &&
+      def.fields.some((field) => field.key === lastEditedField.fieldKey)
+        ? lastEditedField.fieldKey
+        : def.fields[0]?.key
+
+    if (!fieldKey) return
+
+    updateNodeData(node.id, {
+      values: {
+        ...values,
+        [fieldKey]: `${values[fieldKey] ?? ""}${connectionValue}`,
+      },
+    })
+  }
+
   return (
     <Section title={title} icon={<NodeIcon type={type} />}>
       <div className="flex flex-col gap-3 p-3">
@@ -144,6 +170,9 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
               key={field.key}
               field={field}
               value={values[field.key] ?? ""}
+              onFocus={() => {
+                setLastEditedField({ nodeId: node.id, fieldKey: field.key })
+              }}
               onChange={(value) => {
                 updateNodeData(node.id, {
                   values: { ...values, [field.key]: value },
@@ -153,6 +182,32 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
           ))
         )}
       </div>
+      {/* Connection chips insert upstream values into the last-focused field. */}
+      {connections.length > 0 && (
+        <div className="border-t border-border p-3">
+          <p className="mb-2 text-xs font-medium">Connections</p>
+          <div className="flex flex-wrap gap-1.5">
+            {connections.map((connection) => (
+              <Button
+                key={`${connection.label}:${connection.value}`}
+                type="button"
+                variant="outline"
+                size="xs"
+                className="rounded-full pl-1"
+                disabled={def.fields.length === 0}
+                title={`Insert ${connection.value}`}
+                onClick={() => insertConnection(connection.value)}
+              >
+                <NodeIcon
+                  type={connection.type}
+                  className="size-4 rounded-full"
+                />
+                {connection.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
     </Section>
   )
 }

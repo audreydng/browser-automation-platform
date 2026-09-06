@@ -12,6 +12,11 @@ export type NodeField = {
   required?: boolean
 }
 
+export type NodeOutputs = {
+  key: string
+  label: string
+}
+
 // A node type's manifest entry. Add a node by adding an entry to nodeRegistry.
 export type NodeDefinition = {
   type: string
@@ -20,6 +25,7 @@ export type NodeDefinition = {
   icon: LucideIcon
   accent: string // Tailwind classes for the icon chip color
   fields: NodeField[]
+  outputs: NodeOutputs[]
 }
 
 export const nodeRegistry = {
@@ -30,6 +36,7 @@ export const nodeRegistry = {
     icon: MousePointerClick,
     accent: "bg-blue-500 text-white",
     fields: [],
+    outputs: [],
   },
   "open-url": {
     type: "open-url",
@@ -40,7 +47,11 @@ export const nodeRegistry = {
     fields: [
       { key: "url", label: "URL", placeholder: "https://youtube.com", required: true },
       { key: "description", label: "Description", placeholder: "Optional", multiline: true },
-      ],
+    ],
+    outputs: [
+      { key: "url", label: "URL" },
+      { key: "title", label: "Title" },
+    ],
   },
 } satisfies Record<string, NodeDefinition>
 
