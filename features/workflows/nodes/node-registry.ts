@@ -1,5 +1,13 @@
 import type { Node } from "@xyflow/react"
-import { Globe, MousePointerClick, type LucideIcon } from "lucide-react"
+import {
+  Bot,
+  Eye,
+  Globe,
+  MousePointerClick,
+  Pointer,
+  ScanText,
+  type LucideIcon,
+} from "lucide-react"
 
 export type StepNodeKind = "trigger" | "action"
 
@@ -51,6 +59,88 @@ export const nodeRegistry = {
     outputs: [
       { key: "url", label: "URL" },
       { key: "title", label: "Title" },
+    ],
+  },
+  act: {
+    type: "act",
+    kind: "action",
+    label: "Act",
+    icon: Pointer,
+    accent: "bg-violet-500 text-white",
+    fields: [
+      {
+        key: "instruction",
+        label: "Instruction",
+        placeholder: "Click the sign in button",
+        multiline: true,
+        required: true,
+      },
+    ],
+    outputs: [
+      { key: "success", label: "Success" },
+      { key: "message", label: "Message" },
+      { key: "url", label: "URL" },
+    ],
+  },
+  extract: {
+    type: "extract",
+    kind: "action",
+    label: "Extract",
+    icon: ScanText,
+    accent: "bg-amber-500 text-white",
+    fields: [
+      {
+        key: "instruction",
+        label: "Instruction",
+        placeholder: "The price of the first product",
+        multiline: true,
+        required: true,
+      },
+    ],
+    outputs: [{ key: "extraction", label: "Extracted data" }],
+  },
+  observe: {
+    type: "observe",
+    kind: "action",
+    label: "Observe",
+    icon: Eye,
+    accent: "bg-rose-500 text-white",
+    fields: [
+      {
+        key: "instruction",
+        label: "Instruction",
+        placeholder: "The sign in button",
+        multiline: true,
+        required: true,
+      },
+    ],
+    // Observe returns a list, so alongside the whole array the registry offers
+    // paths into the first match — the common case for feeding a later node.
+    outputs: [
+      { key: "matches", label: "Matches" },
+      { key: "matches[0].selector", label: "First match · Selector" },
+      { key: "matches[0].description", label: "First match · Description" },
+    ],
+  },
+  agent: {
+    type: "agent",
+    kind: "action",
+    label: "Agent",
+    icon: Bot,
+    accent: "bg-slate-800 text-white",
+    fields: [
+      {
+        key: "instruction",
+        label: "Instruction",
+        placeholder: "Search for wireless headphones and open the top result",
+        multiline: true,
+        required: true,
+      },
+    ],
+    outputs: [
+      { key: "success", label: "Success" },
+      { key: "message", label: "Message" },
+      { key: "completed", label: "Completed" },
     ],
   },
 } satisfies Record<string, NodeDefinition>
