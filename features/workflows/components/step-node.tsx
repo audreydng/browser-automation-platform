@@ -1,13 +1,17 @@
+"use client"
+
 import { memo } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 
+import { useLatestRunSteps } from "@/features/workflows/components/workflow-runs-provider"
 import {
   nodeRegistry,
   type StepNodeType,
 } from "@/features/workflows/nodes/node-registry"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
-function StepNodeComponent({ data, selected }: NodeProps<StepNodeType>) {
+function StepNodeComponent({ id, data, selected }: NodeProps<StepNodeType>) {
   const { type, kind, title, values } = data
   const def = nodeRegistry[type]
   const Icon = def.icon
@@ -16,10 +20,20 @@ function StepNodeComponent({ data, selected }: NodeProps<StepNodeType>) {
   // A trigger starts the flow and takes no input, so it has no target handle.
   const hasTarget = kind !== "trigger"
 
+  const { steps, isLive } = useLatestRunSteps()
+  const status = steps.find((step) => step.nodeId === id)?.status
+  // A crashed or cancelled run can leave a node stuck on "running" forever, so
+  // only spin while the run itself is still going. "failed" needs no such guard
+  // — it is a final state worth showing long after the run ends.
+  const isRunning = status === "running" && isLive
+  const isFailed = status === "failed"
+
   return (
     <div
       className={cn(
         "min-w-50 max-w-80 rounded-(--radius) border-2 border-border bg-card text-card-foreground",
+        isRunning && "border-blue-500",
+        isFailed && "border-destructive",
         selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
       )}
     >
@@ -39,7 +53,7 @@ function StepNodeComponent({ data, selected }: NodeProps<StepNodeType>) {
             def.accent
           )}
         >
-          <Icon className="size-4" />
+          {isRunning ? <Spinner className="size-4" /> : <Icon className="size-4" />}
         </div>
         <span className="text-sm font-semibold">{title}</span>
       </div>
