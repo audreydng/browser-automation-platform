@@ -3,6 +3,7 @@ import {
   Bot,
   Eye,
   Globe,
+  Mail,
   MousePointerClick,
   Pointer,
   ScanText,
@@ -142,6 +143,35 @@ export const nodeRegistry = {
       { key: "message", label: "Message" },
       { key: "completed", label: "Completed" },
     ],
+  },
+  "send-email": {
+    type: "send-email",
+    kind: "action",
+    label: "Send Email",
+    icon: Mail,
+    accent: "bg-sky-500 text-white",
+    fields: [
+      {
+        key: "to",
+        label: "To",
+        placeholder: "delivered@resend.dev",
+        required: true,
+      },
+      {
+        key: "subject",
+        label: "Subject",
+        placeholder: "Your workflow finished",
+        required: true,
+      },
+      {
+        key: "body",
+        label: "Body",
+        placeholder: "What you want to say",
+        multiline: true,
+        required: true,
+      },
+    ],
+    outputs: [{ key: "id", label: "Email ID" }],
   },
 } satisfies Record<string, NodeDefinition>
 
