@@ -1,6 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
+import * as Sentry from "@sentry/nextjs"
 import {
   LiveblocksProvider,
   RoomProvider,
@@ -8,6 +9,7 @@ import {
 } from "@liveblocks/react/suspense"
 
 import { Spinner } from "@/components/ui/spinner"
+import { errorAttributes } from "@/lib/sentry"
 
 export function Room({
   children,
@@ -28,12 +30,22 @@ export function Room({
             body: JSON.stringify({ userIds }),
           })
 
+          // Unresolved users still collaborate, just without names or avatars —
+          // so these are warnings, and the only trace the failure leaves.
           if (!response.ok) {
+            Sentry.logger.warn("Could not resolve Liveblocks users", {
+              "http.response.status_code": response.status,
+              "liveblocks.user_count": userIds.length,
+            })
             return undefined
           }
 
           return await response.json()
-        } catch {
+        } catch (error) {
+          Sentry.logger.warn("Could not resolve Liveblocks users", {
+            ...errorAttributes(error),
+            "liveblocks.user_count": userIds.length,
+          })
           return undefined
         }
       }}

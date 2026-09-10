@@ -1,7 +1,16 @@
 "use client"
 
-import { createContext, useContext, useMemo, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react"
+import * as Sentry from "@sentry/nextjs"
 import { useRealtimeRunsWithTag } from "@trigger.dev/react-hooks"
+
+import { errorAttributes } from "@/lib/sentry"
 
 import type { RunStep, runWorkflowTask } from "@/features/workflows/tasks/run-workflow"
 
@@ -51,6 +60,16 @@ export function WorkflowRunsProvider({
       skipColumns: ["payload"],
     }
   )
+
+  // A dropped subscription freezes the console and canvas on stale run state.
+  useEffect(() => {
+    if (!error) return
+
+    Sentry.logger.warn("Workflow runs subscription failed", {
+      ...errorAttributes(error),
+      "workflow.id": workflowId,
+    })
+  }, [error, workflowId])
 
   const value = useMemo(() => ({ runs, error }), [runs, error])
 

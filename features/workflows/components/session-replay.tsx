@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react"
 import Hls from "hls.js"
+import * as Sentry from "@sentry/nextjs"
 
 import { Spinner } from "@/components/ui/spinner"
+import { errorAttributes } from "@/lib/sentry"
 import { cn } from "@/lib/utils"
 
 // Browserbase finishes writing a recording some time after its session closes,
@@ -73,6 +75,12 @@ export function SessionReplay({
 
         if (response.status === 202) {
           if (Date.now() >= deadline) {
+            // Either never recorded or Browserbase is slower than our deadline —
+            // the rate of these says which, and whether the deadline is right.
+            Sentry.logger.warn("Session replay unavailable after waiting", {
+              "browserbase.session_id": sessionId,
+              "replay.wait_ms": POLL_TIMEOUT_MS,
+            })
             setState("unavailable")
             return
           }
@@ -81,12 +89,20 @@ export function SessionReplay({
           return
         }
 
+        Sentry.logger.error("Session replay request failed", {
+          "browserbase.session_id": sessionId,
+          "http.response.status_code": response.status,
+        })
         setState("error")
         setMessage(`The replay request failed (${response.status}).`)
       } catch (error) {
         // An abort is this effect being cleaned up, not a failure worth showing.
         if (controller.signal.aborted) return
 
+        Sentry.logger.error("Session replay request failed", {
+          ...errorAttributes(error),
+          "browserbase.session_id": sessionId,
+        })
         setState("error")
         setMessage(error instanceof Error ? error.message : String(error))
       }
@@ -98,7 +114,7 @@ export function SessionReplay({
       controller.abort()
       if (timer) clearTimeout(timer)
     }
-  }, [src])
+  }, [src, sessionId])
 
   // Attach the playlist once it is there. hls.js re-fetches the same URL, which
   // is cheap next to the segments and keeps the manifest out of React state.
@@ -125,12 +141,17 @@ export function SessionReplay({
       // playback for good.
       if (!data.fatal) return
 
+      Sentry.logger.error("Session replay playback failed", {
+        "browserbase.session_id": sessionId,
+        "hls.error_type": data.type,
+        "hls.error_details": data.details,
+      })
       setState("error")
       setMessage(data.details)
     })
 
     return () => hls.destroy()
-  }, [state, src, playback])
+  }, [state, src, playback, sessionId])
 
   if (state === "ready" && playback !== "none") {
     return (

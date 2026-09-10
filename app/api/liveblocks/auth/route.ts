@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 
 import { liveblocks } from "@/lib/liveblocks"
 
@@ -39,6 +40,15 @@ export async function POST() {
       },
     }
   )
+
+  // Liveblocks answers with a status rather than throwing, so a failure here
+  // would otherwise only show up as a canvas that never connects.
+  if (status >= 400) {
+    Sentry.logger.error("Liveblocks auth failed", {
+      "org.id": orgId,
+      "http.response.status_code": status,
+    })
+  }
 
   return new Response(body, { status })
 }

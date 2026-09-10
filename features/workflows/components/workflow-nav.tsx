@@ -1,5 +1,6 @@
 "use client"
 
+import * as Sentry from "@sentry/nextjs"
 import { Lock, Plus, Workflow } from "lucide-react"
 import Link from "next/link"
 import { unstable_rethrow, usePathname } from "next/navigation"
@@ -25,6 +26,7 @@ import {
 import { useProPlan } from "@/features/workflows/hooks/use-pro-plan"
 import { generateSlug } from "@/features/workflows/lib/generate-slug"
 import type { Workflow as WorkflowRecord } from "@/lib/db/schema"
+import { errorAttributes } from "@/lib/sentry"
 
 type WorkflowNavProps = {
   workflows: WorkflowRecord[]
@@ -61,6 +63,7 @@ export function WorkflowNav({
         // createWorkflowAction redirects on success, which throws — rethrow that
         // before treating anything as a failure.
         unstable_rethrow(error)
+        Sentry.logger.error("Workflow creation failed", errorAttributes(error))
         toast.error("Could not create workflow.")
       }
     })

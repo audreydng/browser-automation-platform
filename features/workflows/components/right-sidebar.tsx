@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { Lock, MoreHorizontal, Play, Trash2 } from "lucide-react"
 import { unstable_rethrow } from "next/navigation"
 import { useReactFlow, useStore } from "@xyflow/react"
+import * as Sentry from "@sentry/nextjs"
 import { toast } from "sonner"
 
 import {
@@ -24,6 +25,7 @@ import { Label } from "@/components/ui/label"
 import { ResizablePanel } from "@/components/ui/resizable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { errorAttributes } from "@/lib/sentry"
 import { cn } from "@/lib/utils"
 
 import { deleteWorkflowAction, runWorkflowAction } from "@/features/workflows/actions"
@@ -359,6 +361,10 @@ function ActionsMenu({ workflowId }: { workflowId: string }) {
         await deleteWorkflowAction(workflowId)
       } catch (error) {
         unstable_rethrow(error)
+        Sentry.logger.error("Workflow delete failed", {
+          ...errorAttributes(error),
+          "workflow.id": workflowId,
+        })
         toast.error("Could not delete workflow.")
       }
     })
@@ -413,6 +419,10 @@ function RunButton({ workflowId }: { workflowId: string }) {
             toast.success("Workflow run started.")
           } catch (error) {
             unstable_rethrow(error)
+            Sentry.logger.error("Workflow run failed to start", {
+              ...errorAttributes(error),
+              "workflow.id": workflowId,
+            })
             toast.error("Could not start workflow run.")
           }
         })

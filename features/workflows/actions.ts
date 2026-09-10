@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import { runs, tasks } from "@trigger.dev/sdk"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
@@ -25,10 +26,18 @@ export async function createWorkflowAction(name: string) {
   // from non-pro orgs, but that is a courtesy — this is the check that counts,
   // since the action is a POST anyone signed in can call directly.
   if (!has({ plan: PRO_PLAN })) {
+    // The UI already hides the button, so landing here means a stale client or
+    // a direct call — worth being able to see.
+    Sentry.logger.warn("Workflow creation blocked by plan", { "org.id": orgId })
     throw new Error("The pro plan is required to create workflows")
   }
 
   const workflow = await createWorkflow(orgId, name)
+
+  Sentry.logger.info("Workflow created", {
+    "org.id": orgId,
+    "workflow.id": workflow.id,
+  })
 
   revalidatePath("/workflows", "layout")
   redirect(`/workflows/${workflow.id}`)
@@ -44,11 +53,17 @@ export async function deleteWorkflowAction(id: string) {
   const workflow = await deleteWorkflow(orgId, id)
 
   if (!workflow) {
+    Sentry.logger.warn("Workflow delete found no workflow", {
+      "org.id": orgId,
+      "workflow.id": id,
+    })
     throw new Error("Workflow not found")
   }
 
   // The workflow id doubles as its Liveblocks room id — clean it up too.
   await liveblocks.deleteRoom(id)
+
+  Sentry.logger.info("Workflow deleted", { "org.id": orgId, "workflow.id": id })
 
   revalidatePath("/workflows", "layout")
   redirect("/")
@@ -75,6 +90,16 @@ export async function runWorkflowAction({
     { tags: [`workflow:${id}`] }
   )
 
+  // workflow.run_id is the Trigger.dev run id — the key for joining these logs
+  // to the run's own once the task side reports to Sentry too.
+  Sentry.logger.info("Workflow run triggered", {
+    "org.id": orgId,
+    "workflow.id": id,
+    "workflow.run_id": handle.id,
+    "workflow.node_count": graph.nodes.length,
+    "workflow.edge_count": graph.edges.length,
+  })
+
   return handle
 }
 
@@ -82,4 +107,8 @@ export async function cancelWorkflowRunAction(runId: string) {
   const { orgId } = await auth()
   if (!orgId) throw new Error("No active organization")
   await runs.cancel(runId)
+  Sentry.logger.info("Workflow run cancelled", {
+    "org.id": orgId,
+    "workflow.run_id": runId,
+  })
 }
