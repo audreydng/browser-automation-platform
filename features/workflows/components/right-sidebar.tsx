@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Lock, MoreHorizontal, Play, Trash2 } from "lucide-react"
+import { Lock, MoreHorizontal, Play, Square, Trash2 } from "lucide-react"
 import { unstable_rethrow } from "next/navigation"
 import { useReactFlow, useStore } from "@xyflow/react"
 import * as Sentry from "@sentry/nextjs"
@@ -28,8 +28,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { errorAttributes } from "@/lib/sentry"
 import { cn } from "@/lib/utils"
 
-import { deleteWorkflowAction, runWorkflowAction } from "@/features/workflows/actions"
+import {
+  cancelWorkflowRunAction,
+  deleteWorkflowAction,
+  runWorkflowAction,
+} from "@/features/workflows/actions"
 import { NodeIcon } from "@/features/workflows/components/node-icon"
+import { useWorkflowRunsWithSteps } from "@/features/workflows/components/workflow-runs-provider"
 import { useProPlan } from "@/features/workflows/hooks/use-pro-plan"
 import { useUpstreamConnections } from "@/features/workflows/hooks/use-upstream-connections"
 import { validateGraph } from "@/features/workflows/lib/validate-graph"
@@ -395,39 +400,89 @@ function ActionsMenu({ workflowId }: { workflowId: string }) {
   )
 }
 
-// Kicks off a run of the current workflow.
+// Kicks off a run of the current workflow, or stops the one in flight. At most
+// one run is live at a time, so the button toggles on that run.
 function RunButton({ workflowId }: { workflowId: string }) {
   const { getNodes, getEdges } = useReactFlow<StepNodeType>()
+  const runs = useWorkflowRunsWithSteps()
   const [isPending, startTransition] = useTransition()
-  return (
-    <Button
-      size="sm"
-      variant="secondary"
-      disabled={isPending}
-      onClick={() => {
-        // TODO: validate the graph and run the workflow (toggle to Stop while running).
-        const graph = { nodes: getNodes(), edges: getEdges() }
-        const problems = validateGraph(graph)
-        if (problems.length > 0) {
-          toast.error("Cannot run workflow: " + problems.join(", "))
-          return
-        }
+  // The run this client just triggered, held until the realtime subscription
+  // reports it. Without it the button flips back to Run in the gap between the
+  // action returning and the run showing up, inviting a second run.
+  const [startedRunId, setStartedRunId] = useState<string>()
+  // The run a stop was sent for, so the button stays disabled until the
+  // subscription reports it cancelled.
+  const [stoppingRunId, setStoppingRunId] = useState<string>()
 
-        startTransition(async () => {
-          try {
-            await runWorkflowAction({ id: workflowId, graph })
-            toast.success("Workflow run started.")
-          } catch (error) {
-            unstable_rethrow(error)
-            Sentry.logger.error("Workflow run failed to start", {
-              ...errorAttributes(error),
-              "workflow.id": workflowId,
-            })
-            toast.error("Could not start workflow run.")
-          }
+  const liveRunId =
+    runs.find((run) => run.isLive)?.id ??
+    (startedRunId && !runs.some((run) => run.id === startedRunId)
+      ? startedRunId
+      : undefined)
+  const isStopping = liveRunId !== undefined && liveRunId === stoppingRunId
+
+  function run() {
+    const graph = { nodes: getNodes(), edges: getEdges() }
+    const problems = validateGraph(graph)
+    if (problems.length > 0) {
+      toast.error("Cannot run workflow: " + problems.join(", "))
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const handle = await runWorkflowAction({ id: workflowId, graph })
+        setStartedRunId(handle.id)
+        toast.success("Workflow run started.")
+      } catch (error) {
+        unstable_rethrow(error)
+        Sentry.logger.error("Workflow run failed to start", {
+          ...errorAttributes(error),
+          "workflow.id": workflowId,
         })
-      }}
-    >
+        toast.error("Could not start workflow run.")
+      }
+    })
+  }
+
+  function stop(runId: string) {
+    setStoppingRunId(runId)
+    startTransition(async () => {
+      try {
+        await cancelWorkflowRunAction(runId)
+        // Stop waiting on the subscription for a run we triggered; if it does
+        // report the run, its own status takes over.
+        setStartedRunId(undefined)
+        toast.success("Workflow run stopped.")
+      } catch (error) {
+        unstable_rethrow(error)
+        setStoppingRunId(undefined)
+        Sentry.logger.error("Workflow run failed to stop", {
+          ...errorAttributes(error),
+          "workflow.id": workflowId,
+          "workflow.run_id": runId,
+        })
+        toast.error("Could not stop workflow run.")
+      }
+    })
+  }
+
+  if (liveRunId) {
+    return (
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={isPending || isStopping}
+        onClick={() => stop(liveRunId)}
+      >
+        <Square fill="currentColor" />
+        {isStopping ? "Stopping" : "Stop"}
+      </Button>
+    )
+  }
+
+  return (
+    <Button size="sm" variant="secondary" disabled={isPending} onClick={run}>
       <Play fill="primary" />
       Run
     </Button>
