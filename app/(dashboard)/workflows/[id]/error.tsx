@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import * as Sentry from "@sentry/nextjs"
 import { TriangleAlertIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,8 @@ export default function Error({
   unstable_retry: () => void
 }) {
   useEffect(() => {
-    console.error(error)
+    // Next.js catches this before Sentry's global handlers can see it
+    Sentry.captureException(error)
   }, [error])
 
   return (
