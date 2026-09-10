@@ -1,6 +1,7 @@
 "use client"
 
 import prettyMilliseconds from "pretty-ms"
+import { Video } from "lucide-react"
 
 import { NodeIcon } from "@/features/workflows/components/node-icon"
 import { useGraphPlan } from "@/features/workflows/hooks/use-graph-plan"
@@ -13,9 +14,27 @@ import type { RunStep } from "@/features/workflows/tasks/run-workflow"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
-// Which step row is open, if any. A step is only unique within its run — the
-// same node appears in every run — so it takes both ids to name one.
-export type StepSelection = { runId: string; nodeId: string }
+// What the console has open in its output pane, and there is only ever one. A
+// step is unique only within its run — the same node appears in every run — so
+// it takes both ids; a replay stands for the whole run, so the run id names it.
+export type ConsoleSelection =
+  | { kind: "step"; runId: string; nodeId: string }
+  | { kind: "replay"; runId: string }
+
+// One string per selectable thing, so comparing two selections — and toggling
+// one off — never has to branch on the kind.
+export function selectionKey(selection: ConsoleSelection): string {
+  return selection.kind === "step"
+    ? `step:${selection.runId}:${selection.nodeId}`
+    : `replay:${selection.runId}`
+}
+
+function isSelected(
+  current: ConsoleSelection | null,
+  candidate: ConsoleSelection
+): boolean {
+  return current !== null && selectionKey(current) === selectionKey(candidate)
+}
 
 // Run statuses that mean the run ended badly, as opposed to COMPLETED (fine) or
 // CANCELED (stopped on purpose). Drawn in the destructive color.
@@ -33,6 +52,10 @@ function formatDuration(durationMs: number | undefined) {
   if (durationMs === undefined) return null
   return prettyMilliseconds(durationMs)
 }
+
+// Every row under a run header lines up on this, step or replay alike.
+const ROW_CLASS_NAME =
+  "flex w-full items-center gap-2.5 rounded-(--radius) py-1.5 pr-2 pl-7 text-left"
 
 // One node's row under a run. Mirrors the canvas node's states: a spinner while
 // it runs, destructive once it fails, and dimmed for a step the run never
@@ -57,10 +80,7 @@ function StepRow({
   const isPending = step.status === "pending" || (step.status === "running" && !isLive)
   const duration = formatDuration(step.durationMs)
 
-  const rowClassName = cn(
-    "flex w-full items-center gap-2.5 rounded-(--radius) py-1.5 pr-2 pl-7 text-left",
-    isPending && "opacity-50"
-  )
+  const rowClassName = cn(ROW_CLASS_NAME, isPending && "opacity-50")
 
   const content = (
     <>
@@ -106,17 +126,46 @@ function StepRow({
   )
 }
 
+// The run's browser recording. Sits with the step rows and selects the same
+// way, but it stands for the whole run rather than any one node — hence the
+// neutral chip instead of a NodeIcon.
+function ReplayRow({
+  selected,
+  onSelect,
+}: {
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        ROW_CLASS_NAME,
+        "transition-colors hover:bg-accent",
+        selected && "bg-accent"
+      )}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <Video className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-xs font-medium">Replay</span>
+    </button>
+  )
+}
+
 // A run and its steps: one header line naming the run, then a row per node.
 function RunGroup({
   run,
   plan,
   selected,
-  onSelectStep,
+  onSelect,
 }: {
   run: WorkflowRunWithSteps
   plan: RunStep[]
-  selected: StepSelection | null
-  onSelectStep: (selection: StepSelection) => void
+  selected: ConsoleSelection | null
+  onSelect: (selection: ConsoleSelection) => void
 }) {
   const isFailed = FAILED_STATUSES.includes(run.status)
   // The run's own duration, which the platform keeps — not the sum of the
@@ -162,19 +211,33 @@ function RunGroup({
         ? plan.map((step) => (
             <StepRow key={step.nodeId} step={step} isLive={false} />
           ))
-        : run.steps.map((step) => (
-            <StepRow
-              key={step.nodeId}
-              step={step}
-              isLive={run.isLive}
-              isSelected={
-                selected?.runId === run.id && selected.nodeId === step.nodeId
-              }
-              onSelect={() =>
-                onSelectStep({ runId: run.id, nodeId: step.nodeId })
-              }
-            />
-          ))}
+        : run.steps.map((step) => {
+            const selection: ConsoleSelection = {
+              kind: "step",
+              runId: run.id,
+              nodeId: step.nodeId,
+            }
+
+            return (
+              <StepRow
+                key={step.nodeId}
+                step={step}
+                isLive={run.isLive}
+                isSelected={isSelected(selected, selection)}
+                onSelect={() => onSelect(selection)}
+              />
+            )
+          })}
+
+      {/* The session id only ever arrives on a finished run's output, so this
+          row cannot show before the recording exists to ask for. The isLive
+          check is belt and braces. */}
+      {run.browserbaseSessionId && !run.isLive && (
+        <ReplayRow
+          selected={isSelected(selected, { kind: "replay", runId: run.id })}
+          onSelect={() => onSelect({ kind: "replay", runId: run.id })}
+        />
+      )}
     </div>
   )
 }
@@ -183,10 +246,10 @@ function RunGroup({
 // steps below it. Selection lives in the parent ConsolePanel.
 export function LogsPanel({
   selected,
-  onSelectStep,
+  onSelect,
 }: {
-  selected: StepSelection | null
-  onSelectStep: (selection: StepSelection) => void
+  selected: ConsoleSelection | null
+  onSelect: (selection: ConsoleSelection) => void
 }) {
   const runs = useWorkflowRunsWithSteps()
   const { error } = useWorkflowRuns()
@@ -236,7 +299,7 @@ export function LogsPanel({
             run={run}
             plan={plan}
             selected={selected}
-            onSelectStep={onSelectStep}
+            onSelect={onSelect}
           />
         ))
       )}

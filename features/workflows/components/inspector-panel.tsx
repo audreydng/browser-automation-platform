@@ -1,10 +1,15 @@
 "use client"
 
 import prettyMilliseconds from "pretty-ms"
+import { Video } from "lucide-react"
 
-import type { StepSelection } from "@/features/workflows/components/logs-panel"
+import type { ConsoleSelection } from "@/features/workflows/components/logs-panel"
 import { NodeIcon } from "@/features/workflows/components/node-icon"
-import { useWorkflowRunsWithSteps } from "@/features/workflows/components/workflow-runs-provider"
+import { SessionReplay } from "@/features/workflows/components/session-replay"
+import {
+  useWorkflowRunsWithSteps,
+  type WorkflowRunWithSteps,
+} from "@/features/workflows/components/workflow-runs-provider"
 import type { RunStep } from "@/features/workflows/tasks/run-workflow"
 import { cn } from "@/lib/utils"
 
@@ -29,12 +34,47 @@ function formatOutput(step: RunStep): string | null {
   return JSON.stringify(step.output, null, 2) ?? null
 }
 
-// The console's right half: what the selected step produced, or why it failed.
-// Renders only while a step is selected — the parent ConsolePanel owns that.
-export function InspectorPanel({ selection }: { selection: StepSelection }) {
+// The browser recording for a whole run, rather than one step's output. Offered
+// only for a finished run that drove a session — see LogsPanel's Replay row.
+function ReplayView({ run }: { run: WorkflowRunWithSteps | undefined }) {
+  if (!run?.browserbaseSessionId) {
+    return (
+      <p className="p-3 text-xs text-muted-foreground">
+        This recording is no longer available.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <Video className="size-3.5" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold">
+          Replay
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 px-3 pb-3">
+        <SessionReplay
+          sessionId={run.browserbaseSessionId}
+          className="rounded-(--radius)"
+        />
+      </div>
+    </div>
+  )
+}
+
+// The console's right half: what the selected step produced, why it failed, or
+// the selected run's recording. Renders only while something is selected — the
+// parent ConsolePanel owns that.
+export function InspectorPanel({ selection }: { selection: ConsoleSelection }) {
   const runs = useWorkflowRunsWithSteps()
 
   const run = runs.find((candidate) => candidate.id === selection.runId)
+
+  if (selection.kind === "replay") return <ReplayView run={run} />
+
   const step = run?.steps.find((candidate) => candidate.nodeId === selection.nodeId)
 
   // The selected run can drop out from under the selection — it ages out of the

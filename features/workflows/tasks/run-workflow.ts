@@ -104,6 +104,11 @@ export const runWorkflowTask = task({
     // LLM routes through Browserbase's Model Gateway (BROWSERBASE_API_KEY), so no
     // separate provider key is needed.
       let stagehand: Stagehand | undefined
+      // The Browserbase session this run drove, captured the moment it opens so
+      // it outlives the close below — that recording is the only way to replay
+      // what the browser actually did. A run of nothing but non-browser nodes
+      // (send-email alone, say) never opens one and leaves this undefined.
+      let browserbaseSessionId: string | undefined
       const getStagehand = async () => {
         if (stagehand) return stagehand
         stagehand = new Stagehand({
@@ -116,6 +121,7 @@ export const runWorkflowTask = task({
         disablePino: true,
          })
          await stagehand.init()
+         browserbaseSessionId = stagehand.browserbaseSessionID
          return stagehand
         }
 
@@ -175,7 +181,9 @@ export const runWorkflowTask = task({
     await stagehand?.close()
 
     // Return the final steps too, so a successful run's finished state is
-    // guaranteed to reach the canvas even if a flush was still pending.
-    return { steps, outputs }
+    // guaranteed to reach the canvas even if a flush was still pending. The
+    // session id rides along here rather than in metadata: its recording is not
+    // retrievable until the session closes, which is the line above.
+    return { steps, outputs, browserbaseSessionId }
   },
 })

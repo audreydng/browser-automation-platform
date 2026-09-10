@@ -11,21 +11,21 @@ import {
 import { InspectorPanel } from "@/features/workflows/components/inspector-panel"
 import {
   LogsPanel,
-  type StepSelection,
+  selectionKey,
+  type ConsoleSelection,
 } from "@/features/workflows/components/logs-panel"
 
-// The console under the canvas. It owns which step is selected — the list only
-// reports clicks — so the detail view that renders a step's output and error can
-// sit beside the list and read the same selection.
+// The console under the canvas. It owns what is selected — the list only
+// reports clicks — so the output pane can sit beside the list and read the same
+// selection. One selection at a time, whether it names a step or a run's
+// replay, so opening either closes whatever was open before.
 export function ConsolePanel() {
-  const [selected, setSelected] = useState<StepSelection | null>(null)
+  const [selected, setSelected] = useState<ConsoleSelection | null>(null)
 
-  // Clicking the selected step again clears it, so a step row toggles.
-  const selectStep = (next: StepSelection) =>
+  // Clicking what is already open clears it, so every row toggles.
+  const select = (next: ConsoleSelection) =>
     setSelected((current) =>
-      current?.runId === next.runId && current.nodeId === next.nodeId
-        ? null
-        : next
+      current && selectionKey(current) === selectionKey(next) ? null : next
     )
 
   return (
@@ -39,7 +39,7 @@ export function ConsolePanel() {
             as the inspector comes and goes. */}
         <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel id="logs" minSize="12rem">
-            <LogsPanel selected={selected} onSelectStep={selectStep} />
+            <LogsPanel selected={selected} onSelect={select} />
           </ResizablePanel>
           {/* Only mounted while something is selected, so the list gets the
               whole panel back the moment a step is toggled off. */}

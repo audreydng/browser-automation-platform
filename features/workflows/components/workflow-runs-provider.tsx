@@ -15,6 +15,8 @@ type WorkflowRun = ReturnType<
 export type WorkflowRunWithSteps = WorkflowRun & {
   steps: RunStep[]
   isLive: boolean
+  // The Browserbase session this run drove, once there is one to replay.
+  browserbaseSessionId: string | undefined
 }
 
 type WorkflowRunsContextValue = {
@@ -85,6 +87,16 @@ function resolveSteps(run: WorkflowRun): RunStep[] {
   return outputSteps ?? metadataSteps ?? []
 }
 
+// The Browserbase session behind a run, for replaying what the browser did.
+// Read only from the finished run's output, never from live metadata: the task
+// returns the id on its way out, after closing the session, and the recording
+// is not retrievable before that close anyway. So this stays undefined while a
+// run is in flight, for a run that never opened a browser, and for a failed run
+// — which returns no output at all.
+function resolveSessionId(run: WorkflowRun): string | undefined {
+  return run.output?.browserbaseSessionId
+}
+
 // Every run of this workflow, newest first, each with its steps resolved — the
 // console's whole data source.
 export function useWorkflowRunsWithSteps(): WorkflowRunWithSteps[] {
@@ -98,6 +110,7 @@ export function useWorkflowRunsWithSteps(): WorkflowRunWithSteps[] {
           ...run,
           steps: resolveSteps(run),
           isLive: LIVE_STATUSES.includes(run.status),
+          browserbaseSessionId: resolveSessionId(run),
         })),
     [runs]
   )
