@@ -1,4 +1,3 @@
-import toposort from "toposort"
 import { logger, metadata, task } from "@trigger.dev/sdk"
 import { Stagehand } from "@browserbasehq/stagehand"
 import { nodeExecutors } from "@/features/workflows/nodes/node-executors"
@@ -7,14 +6,56 @@ import {
   interpolate,
   type NodeOutputs,
 } from "@/features/workflows/lib/interpolate"
+import { orderNodeIds } from "@/features/workflows/lib/order-node-ids"
+import type { NodeType } from "@/features/workflows/nodes/node-registry"
 
 // One entry per node the run will walk, published to the run's metadata under
-// "steps" so the canvas can render live progress. Status moves
-// pending → running → done, or → failed if the node's executor throws (which
-// also stops the run).
+// "steps" so the canvas and the run console can render live progress. Status
+// moves pending → running → done, or → failed if the node's executor throws
+// (which also stops the run).
+//
+// Everything the console shows lives here: `nodeType` and `title` name the node
+// (the registry turns the type into an icon), `durationMs` times it, and
+// `output`/`error` are whatever it produced. A node with no executor — `start`
+// — settles as done with no output.
 export type RunStep = {
   nodeId: string
+  nodeType: NodeType
+  title: string
   status: "pending" | "running" | "done" | "failed"
+  // Epoch ms, set when the step starts. Lets the console tick a live duration
+  // for the running step, which has no durationMs yet.
+  startedAt?: number
+  // Wall time from "running" to done or failed. Absent while pending/running.
+  durationMs?: number
+  output?: unknown
+  // Set when the metadata copy of `output` was cut down to fit the size cap;
+  // the run's return value always carries the whole thing. See publishSteps.
+  outputTruncated?: boolean
+  // The thrown error's message. Only ever set on a failed step.
+  error?: string
+}
+
+// Run metadata caps out at 256KB for the whole run, and a single extract can
+// blow past that on its own — which would break live updates for every step,
+// not just the big one. So outputs are previewed on the wire and sent whole in
+// the task's return value, which is what the console prefers once a run
+// finishes.
+const OUTPUT_PREVIEW_LIMIT = 2_000
+
+function forPublishing(step: RunStep): RunStep {
+  if (step.output === undefined) return step
+
+  // undefined for a value JSON can't represent (a function, a bigint); treated
+  // as over-long so the console shows the marker rather than silently nothing.
+  const json = JSON.stringify(step.output)
+  if (json !== undefined && json.length <= OUTPUT_PREVIEW_LIMIT) return step
+
+  return {
+    ...step,
+    output: json?.slice(0, OUTPUT_PREVIEW_LIMIT),
+    outputTruncated: true,
+  }
 }
 
 // The Trigger.dev task the Run button fires. It loads the saved graph, works out
@@ -30,24 +71,32 @@ export const runWorkflowTask = task({
     const { nodes, edges } = workflow.graph
     const byId = new Map(nodes.map((n) => [n.id, n]))
 
-    // Run only connected nodes — anything touching an edge. Orphans dropped on
-    // the canvas are skipped. toposort orders them and throws on a cycle.
-    const connected = new Set(edges.flatMap((e) => [e.source, e.target]))
-    const order = toposort
-      .array(
-        nodes.map((n) => n.id),
-        edges.map((e) => [e.source, e.target])
-      )
-      .filter((id) => connected.has(id))
+    // Shared with the console's pre-run preview, so what it lists before you hit
+    // Run is exactly what the run walks. Throws on a cycle, failing the run.
+    const order = orderNodeIds({ nodes, edges })
 
     logger.log(`Running workflow ${workflow.name}`, { steps: order.length })
 
     // Seed the live step list before any work starts, every node pending, so the
     // canvas has the full plan up front. `steps` entries are mutated in place as
     // the run walks them; `publishSteps` re-pushes the whole array to metadata.
-    const steps: RunStep[] = order.map((nodeId) => ({ nodeId, status: "pending" }))
+    const steps: RunStep[] = order.map((nodeId) => {
+      const node = byId.get(nodeId)!
+      return {
+        nodeId,
+        nodeType: node.data.type,
+        title: node.data.title,
+        status: "pending",
+      }
+    })
     const stepsById = new Map(steps.map((s) => [s.nodeId, s]))
-    const publishSteps = () => metadata.set("steps", steps)
+    const publishSteps = () =>
+      // Executor outputs are `unknown` to the type system but plain JSON in
+      // practice, which is what metadata stores — hence the cast.
+      metadata.set(
+        "steps",
+        steps.map(forPublishing) as Parameters<typeof metadata.set>[1]
+      )
     publishSteps()
 
     // The run owns one Browserbase session, opened lazily on the first browser step
@@ -78,7 +127,9 @@ export const runWorkflowTask = task({
       const step = stepsById.get(id)!
       logger.log(`Running step: ${node.data.title}`)
 
+      const startedAt = Date.now()
       step.status = "running"
+      step.startedAt = startedAt
       publishSteps()
       // Force the "running" state to the database now. The next status change is
       // synchronous and would overwrite it in the buffer before it's ever
@@ -98,6 +149,7 @@ export const runWorkflowTask = task({
           )
           const output = await executor({ values, getStagehand })
           outputs[id] = output
+          step.output = output
 
           // Friendly titles power new tokens; ids keep existing saved tokens valid.
           interpolationOutputs[node.data.title] = output
@@ -105,6 +157,8 @@ export const runWorkflowTask = task({
         }
       } catch (error) {
         step.status = "failed"
+        step.durationMs = Date.now() - startedAt
+        step.error = error instanceof Error ? error.message : String(error)
         publishSteps()
         // A thrown run returns no output, so this flush is the only way the
         // failed state ever reaches the canvas before the run stops.
@@ -114,6 +168,7 @@ export const runWorkflowTask = task({
       }
 
       step.status = "done"
+      step.durationMs = Date.now() - startedAt
       publishSteps()
     }
 

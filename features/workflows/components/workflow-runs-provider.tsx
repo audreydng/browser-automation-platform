@@ -9,6 +9,14 @@ type WorkflowRun = ReturnType<
   typeof useRealtimeRunsWithTag<typeof runWorkflowTask>
 >["runs"][number]
 
+// A run plus its resolved step list — what the console renders one row per.
+// Spreads the whole run, so id, status, createdAt, durationMs and the run-level
+// error come along for the header.
+export type WorkflowRunWithSteps = WorkflowRun & {
+  steps: RunStep[]
+  isLive: boolean
+}
+
 type WorkflowRunsContextValue = {
   runs: WorkflowRun[]
   error: Error | undefined
@@ -33,6 +41,10 @@ export function WorkflowRunsProvider({
     `workflow:${workflowId}`,
     {
       accessToken: publicAccessToken,
+      // Without this the hook keys its cache on a useId(), which is tied to this
+      // provider's position in the tree — remount it and the accumulated runs
+      // are dropped. Keying on the workflow keeps them across a remount.
+      id: `workflow-runs:${workflowId}`,
       // Nothing renders the payload — only output.steps and metadata.steps.
       skipColumns: ["payload"],
     }
@@ -58,32 +70,46 @@ export function useWorkflowRuns() {
 // A run is "live" while it is still waiting for or occupying a worker.
 const LIVE_STATUSES = ["QUEUED", "EXECUTING"]
 
-// The step list for the most recent run, plus whether that run is still going.
 // A finished run's output is the source of truth — it is written once the run
 // succeeds and never overwritten — so prefer it and fall back to the metadata
 // the task publishes as it walks the nodes. A failed run has no output, so its
-// last flushed metadata is what shows.
-export function useLatestRunSteps(): { steps: RunStep[]; isLive: boolean } {
+// last flushed metadata is what shows, with any oversized step output cut down
+// to a preview (see the task's OUTPUT_PREVIEW_LIMIT).
+function resolveSteps(run: WorkflowRun): RunStep[] {
+  // Typed through the task; only present once the run has succeeded.
+  const outputSteps = run.output?.steps
+  // Metadata is untyped JSON on the wire, hence the cast. This is what shows
+  // while the run is in flight, and all a failed run ever leaves behind.
+  const metadataSteps = run.metadata?.steps as RunStep[] | undefined
+
+  return outputSteps ?? metadataSteps ?? []
+}
+
+// Every run of this workflow, newest first, each with its steps resolved — the
+// console's whole data source.
+export function useWorkflowRunsWithSteps(): WorkflowRunWithSteps[] {
   const { runs } = useWorkflowRuns()
 
-  return useMemo(() => {
-    const latest = runs.reduce<WorkflowRun | undefined>(
-      (newest, run) =>
-        !newest || run.createdAt > newest.createdAt ? run : newest,
-      undefined
-    )
+  return useMemo(
+    () =>
+      [...runs]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((run) => ({
+          ...run,
+          steps: resolveSteps(run),
+          isLive: LIVE_STATUSES.includes(run.status),
+        })),
+    [runs]
+  )
+}
 
-    if (!latest) return { steps: [], isLive: false }
+// The step list for the most recent run, plus whether that run is still going.
+// What the canvas nodes read to show live per-node status.
+export function useLatestRunSteps(): { steps: RunStep[]; isLive: boolean } {
+  const [latest] = useWorkflowRunsWithSteps()
 
-    // Typed through the task; only present once the run has succeeded.
-    const outputSteps = latest.output?.steps
-    // Metadata is untyped JSON on the wire, hence the cast. This is what shows
-    // while the run is in flight, and all a failed run ever leaves behind.
-    const metadataSteps = latest.metadata?.steps as RunStep[] | undefined
-
-    return {
-      steps: outputSteps ?? metadataSteps ?? [],
-      isLive: LIVE_STATUSES.includes(latest.status),
-    }
-  }, [runs])
+  return useMemo(
+    () => ({ steps: latest?.steps ?? [], isLive: latest?.isLive ?? false }),
+    [latest]
+  )
 }
