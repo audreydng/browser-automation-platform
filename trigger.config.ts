@@ -1,4 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 
 export default defineConfig({
   project: "proj_mhvalhjgngijqubsgplv",
@@ -19,4 +21,19 @@ export default defineConfig({
     },
   },
   dirs: ["features/workflows/tasks"],
+  build: {
+    extensions: [
+      // Uploads source maps on deploy so task stack traces in Sentry point at
+      // the original source. Without the token the deploy still succeeds, just
+      // without upload.
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: "audrey-damg",
+          project: "browser-automation-platform",
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
 });
