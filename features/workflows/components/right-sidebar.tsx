@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { MoreHorizontal, Play, Trash2 } from "lucide-react"
+import { Lock, MoreHorizontal, Play, Trash2 } from "lucide-react"
 import { unstable_rethrow } from "next/navigation"
 import { useReactFlow, useStore } from "@xyflow/react"
 import { toast } from "sonner"
@@ -24,9 +24,11 @@ import { Label } from "@/components/ui/label"
 import { ResizablePanel } from "@/components/ui/resizable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 
 import { deleteWorkflowAction, runWorkflowAction } from "@/features/workflows/actions"
 import { NodeIcon } from "@/features/workflows/components/node-icon"
+import { useProPlan } from "@/features/workflows/hooks/use-pro-plan"
 import { useUpstreamConnections } from "@/features/workflows/hooks/use-upstream-connections"
 import { validateGraph } from "@/features/workflows/lib/validate-graph"
 
@@ -205,18 +207,34 @@ const sections: { kind: StepNodeKind; label: string }[] = [
   { kind: "action", label: "Actions" },
 ]
 
-// Every node type from the registry, filtered into the groups below.
-const definitions = Object.values(nodeRegistry)
+// Every node type from the registry, filtered into the groups below. Typed as
+// NodeDefinition rather than the registry's literal types, so optional fields
+// like `premium` are readable on every entry, not just the ones that set them.
+const definitions: NodeDefinition[] = Object.values(nodeRegistry)
 
-// The Toolbar tab: a button per node type that adds it to the canvas.
+// The Toolbar tab: a button per node type that adds it to the canvas. Premium
+// node types are locked for orgs that are not on pro, and clicking one sends
+// them to upgrade instead of adding it.
 function Palette() {
   const { getNodes, screenToFlowPosition, setNodes } =
     useReactFlow<StepNodeType>()
   const flowElement = useStore((state) => state.domNode)
+  const { isPro, isLoaded, upgrade } = useProPlan()
 
   const add = (type: NodeType) => {
-    const def = nodeRegistry[type]
+    const def: NodeDefinition = nodeRegistry[type]
     const nodes = getNodes()
+
+    if (def.premium && !isPro) {
+      // Still resolving the session: do nothing rather than guess. Adding the
+      // node would leak it to a free org, and redirecting would bounce a paying
+      // one off to a pricing page it does not need.
+      if (isLoaded) {
+        toast.error(`${def.label} is a pro node. Upgrade to use it.`)
+        upgrade()
+      }
+      return
+    }
 
     if (def.kind === "trigger" && nodes.some((node) => node.data.kind === "trigger")) {
       toast.error("A workflow can only have one trigger node.")
@@ -288,17 +306,37 @@ function Palette() {
             <AccordionContent className="flex flex-col gap-0.5">
               {definitions
                 .filter((def) => def.kind === section.kind)
-                .map((def) => (
-                  <Button
-                    key={def.type}
-                    variant="ghost"
-                    onClick={() => add(def.type as NodeType)}
-                    className="justify-start gap-2.5 px-1.5 text-xs"
-                  >
-                    <NodeIcon type={def.type as NodeType} />
-                    {def.label}
-                  </Button>
-                ))}
+                .map((def) => {
+                  // Show the lock only once we know the org is not on pro, so a
+                  // pro org never sees one flash while the session loads.
+                  const locked = Boolean(def.premium) && isLoaded && !isPro
+
+                  return (
+                    <Button
+                      key={def.type}
+                      variant="ghost"
+                      onClick={() => add(def.type as NodeType)}
+                      title={
+                        locked
+                          ? `${def.label} is available on the pro plan`
+                          : undefined
+                      }
+                      className={cn(
+                        "justify-start gap-2.5 px-1.5 text-xs",
+                        locked && "text-muted-foreground"
+                      )}
+                    >
+                      <NodeIcon
+                        type={def.type as NodeType}
+                        className={cn(locked && "opacity-40")}
+                      />
+                      {def.label}
+                      {locked && (
+                        <Lock className="ml-auto size-3 text-muted-foreground" />
+                      )}
+                    </Button>
+                  )
+                })}
             </AccordionContent>
           </AccordionItem>
         ))}

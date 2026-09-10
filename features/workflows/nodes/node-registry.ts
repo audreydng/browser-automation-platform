@@ -35,6 +35,9 @@ export type NodeDefinition = {
   accent: string // Tailwind classes for the icon chip color
   fields: NodeField[]
   outputs: NodeOutputs[]
+  // Only orgs on the pro plan can add this node. The toolbar locks it for
+  // everyone else — see Palette in right-sidebar.tsx.
+  premium?: boolean
 }
 
 export const nodeRegistry = {
@@ -129,6 +132,9 @@ export const nodeRegistry = {
     label: "Agent",
     icon: Bot,
     accent: "bg-slate-800 text-white",
+    // By far the most expensive node to run — it drives the browser on its own
+    // for as many steps as the task takes.
+    premium: true,
     fields: [
       {
         key: "instruction",

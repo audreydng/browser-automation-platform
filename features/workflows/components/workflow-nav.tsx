@@ -1,9 +1,10 @@
 "use client"
 
-import { Plus, Workflow } from "lucide-react"
+import { Lock, Plus, Workflow } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { unstable_rethrow, usePathname } from "next/navigation"
 import { useTransition } from "react"
+import { toast } from "sonner"
 
 import {
   Popover,
@@ -21,6 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useProPlan } from "@/features/workflows/hooks/use-pro-plan"
 import { generateSlug } from "@/features/workflows/lib/generate-slug"
 import type { Workflow as WorkflowRecord } from "@/lib/db/schema"
 
@@ -36,10 +38,31 @@ export function WorkflowNav({
   const { state } = useSidebar()
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
+  const { isPro, isLoaded, upgrade } = useProPlan()
+
+  // Only pro orgs can create workflows. createWorkflowAction enforces this
+  // server-side too — this is the nudge, not the fence.
+  const locked = isLoaded && !isPro
 
   function handleCreateWorkflow() {
+    if (!isPro) {
+      // Still resolving the session: neither create nor redirect until we know.
+      if (isLoaded) {
+        toast.error("Creating workflows is on the pro plan. Upgrade to continue.")
+        upgrade()
+      }
+      return
+    }
+
     startTransition(async () => {
-      await createWorkflowAction(generateSlug())
+      try {
+        await createWorkflowAction(generateSlug())
+      } catch (error) {
+        // createWorkflowAction redirects on success, which throws — rethrow that
+        // before treating anything as a failure.
+        unstable_rethrow(error)
+        toast.error("Could not create workflow.")
+      }
     })
   }
 
@@ -65,8 +88,13 @@ export function WorkflowNav({
                       type="button"
                       disabled={isPending}
                       onClick={handleCreateWorkflow}
+                      title={
+                        locked
+                          ? "Creating workflows is available on the pro plan"
+                          : undefined
+                      }
                     >
-                      <Plus />
+                      {locked ? <Lock /> : <Plus />}
                       <span>New workflow</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -103,11 +131,19 @@ export function WorkflowNav({
         type="button"
         disabled={isPending}
         onClick={handleCreateWorkflow}
-        aria-label="Create a new workflow"
-        title="Create a new workflow"
+        aria-label={
+          locked
+            ? "Upgrade to the pro plan to create workflows"
+            : "Create a new workflow"
+        }
+        title={
+          locked
+            ? "Creating workflows is available on the pro plan"
+            : "Create a new workflow"
+        }
         className="top-[14px] right-[23px] size-8 rounded-lg text-[#eeeeee] hover:bg-[#282828] hover:text-white [&_svg]:size-5"
       >
-        <Plus />
+        {locked ? <Lock /> : <Plus />}
       </SidebarGroupAction>
 
       <SidebarGroupContent>
